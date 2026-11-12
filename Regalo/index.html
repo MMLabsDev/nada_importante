@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acceso restringido</title>
+<style>
+  :root { --verde: #00ff66; --verde-oscuro: #007a33; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #000; color: var(--verde);
+    font-family: "Courier New", Courier, monospace; overflow: hidden; }
+
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #matrix { z-index: 0; opacity: .55; }
+  #luciernagas { z-index: 1; display: none; }
+
+  .pantalla { position: fixed; inset: 0; z-index: 2; display: none;
+    align-items: center; justify-content: center; flex-direction: column;
+    padding: 20px; text-align: center; }
+  .pantalla.activa { display: flex; animation: aparecer 1s ease; }
+  @keyframes aparecer { from { opacity: 0; } to { opacity: 1; } }
+
+  .caja { background: rgba(0, 0, 0, .82); border: 1px solid var(--verde);
+    box-shadow: 0 0 25px rgba(0, 255, 102, .35); padding: 28px;
+    width: min(92vw, 460px); }
+  .titulo { font-size: 1.3rem; letter-spacing: 3px; margin-bottom: 18px;
+    text-shadow: 0 0 8px var(--verde); }
+  .terminal { text-align: left; font-size: .95rem; min-height: 90px;
+    white-space: pre-wrap; line-height: 1.5; }
+  .cursor::after { content: "█"; animation: parpadeo 1s steps(1) infinite; }
+  @keyframes parpadeo { 50% { opacity: 0; } }
+
+  .barra { width: 100%; height: 14px; border: 1px solid var(--verde);
+    margin-top: 18px; position: relative; }
+  .barra > div { height: 100%; width: 0%; background: var(--verde);
+    box-shadow: 0 0 10px var(--verde); transition: width .15s linear; }
+  .porcentaje { margin-top: 8px; font-size: .85rem; }
+
+  /* Login */
+  form { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+  label { font-size: .8rem; letter-spacing: 2px; }
+  input { width: 100%; background: #000; border: 1px solid var(--verde-oscuro);
+    color: var(--verde); font-family: inherit; font-size: 1rem; padding: 10px;
+    outline: none; }
+  input:focus { border-color: var(--verde); box-shadow: 0 0 10px rgba(0,255,102,.5); }
+  button { background: transparent; border: 1px solid var(--verde);
+    color: var(--verde); font-family: inherit; font-size: 1rem;
+    padding: 11px; cursor: pointer; letter-spacing: 2px; margin-top: 6px; }
+  button:hover:not(:disabled) { background: var(--verde); color: #000; }
+  button:disabled { opacity: .4; cursor: default; }
+  #error { color: #ff3355; min-height: 1.2em; font-size: .85rem; text-align: center; }
+  .tiembla { animation: tiembla .4s; }
+  @keyframes tiembla {
+    0%,100% { transform: translateX(0); } 25% { transform: translateX(-8px); }
+    75% { transform: translateX(8px); } }
+
+  /* Mensaje principal */
+  #mensaje { font-size: clamp(1.3rem, 4vw, 2.1rem); margin: 20px 0; min-height: 2.6em;
+    text-shadow: 0 0 12px var(--verde); max-width: 780px; }
+
+  /* Galería */
+  #galeria { z-index: 2; }
+  .marco { position: relative; width: min(92vw, 760px); }
+  .marco img { display: block; width: 100%; max-height: 62vh; object-fit: contain;
+    background: #000; border: 1px solid var(--verde);
+    box-shadow: 0 0 30px rgba(0, 255, 102, .4); transition: opacity 1s ease; }
+  .pie { width: min(92vw, 760px); margin-top: 14px; padding: 14px 18px;
+    background: #000; border: 1px solid var(--verde-oscuro);
+    font-size: clamp(1rem, 2.4vw, 1.25rem); min-height: 3.2em;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 1s ease; text-shadow: 0 0 6px rgba(0,255,102,.6); }
+  .oculto { opacity: 0 !important; }
+  #puntos { margin-top: 12px; display: flex; gap: 8px; }
+  #puntos span { width: 8px; height: 8px; border-radius: 50%;
+    background: var(--verde-oscuro); transition: .4s; }
+  #puntos span.on { background: var(--verde); box-shadow: 0 0 8px var(--verde); }
+
+  /* ---------- Créditos ---------- */
+  #creditos { padding: 0; overflow: hidden; display: none; }
+  #creditos.activa { display: block; }
+  #ventanaCreditos { position: absolute; inset: 0;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 78%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 78%, transparent 100%); }
+  #rollo { position: absolute; left: 0; right: 0; top: 0; padding: 0 20px;
+    text-align: center; will-change: transform; transform: translateY(100vh); }
+  #rollo .gran { font-size: clamp(1.8rem, 6vw, 3.2rem); letter-spacing: 6px;
+    margin-bottom: 70px; text-shadow: 0 0 14px var(--verde); }
+  #rollo .bloque { margin-bottom: 52px; }
+  #rollo .rol { font-size: clamp(.8rem, 2.2vw, 1rem); letter-spacing: 4px;
+    color: var(--verde-oscuro); margin-bottom: 8px; text-transform: uppercase; }
+  #rollo .nombre { font-size: clamp(1.2rem, 3.6vw, 1.9rem);
+    text-shadow: 0 0 8px rgba(0,255,102,.7); }
+  #rollo .fin { font-size: clamp(1.4rem, 4vw, 2.2rem); margin-top: 90px;
+    text-shadow: 0 0 14px var(--verde); }
+
+  #collage { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+  .polaroid { position: absolute; width: min(30vw, 190px); padding: 7px 7px 26px;
+    background: #031a0c; border: 1px solid var(--verde);
+    box-shadow: 0 0 22px rgba(0,255,102,.45); opacity: 0; }
+  .polaroid img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
+
+  /* ---------- Final ---------- */
+  #final .botones { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+    margin-top: 10px; }
+  #final .botones button { flex: 1 1 150px; }
+  #frase { font-size: clamp(1.1rem, 3vw, 1.5rem); margin-bottom: 18px;
+    text-shadow: 0 0 8px var(--verde); line-height: 1.4; }
+
+  #gracias { display: none; flex-direction: column; align-items: center; gap: 18px; }
+  #gracias.visible { display: flex; animation: aparecer 1.2s ease; }
+  #gracias h1 { font-size: clamp(2.2rem, 8vw, 4rem); letter-spacing: 6px;
+    text-shadow: 0 0 18px var(--verde); }
+  #gracias img { width: min(80vw, 380px); max-height: 52vh; object-fit: cover;
+    border: 1px solid var(--verde); box-shadow: 0 0 30px rgba(0,255,102,.5); }
+
+  #aviso { position: fixed; inset: 0; z-index: 10; display: none;
+    align-items: center; justify-content: center; background: rgba(0,0,0,.7);
+    font-size: clamp(1.8rem, 7vw, 3.4rem); color: #ff3355;
+    text-shadow: 0 0 16px #ff3355; text-align: center; padding: 20px; }
+  #aviso.visible { display: flex; }
+
+  .sacude { animation: sacudir .14s linear infinite; }
+  @keyframes sacudir {
+    0%   { transform: translate(0, 0) rotate(0); }
+    20%  { transform: translate(-14px, 6px) rotate(-1deg); }
+    40%  { transform: translate(12px, -8px) rotate(1deg); }
+    60%  { transform: translate(-10px, -6px) rotate(-.6deg); }
+    80%  { transform: translate(10px, 8px) rotate(.8deg); }
+    100% { transform: translate(0, 0) rotate(0); } }
+</style>
+</head>
+<body>
+
+<canvas id="matrix"></canvas>
+<canvas id="luciernagas"></canvas>
+
+<!-- 0. Carga misteriosa -->
+<section id="arranque" class="pantalla activa">
+  <div class="caja">
+    <div class="titulo">SISTEMA</div>
+    <div id="textoArranque" class="terminal cursor"></div>
+    <div class="barra"><div id="barraArranque"></div></div>
+    <div id="pctArranque" class="porcentaje">0%</div>
+  </div>
+</section>
+
+<!-- 1. Login -->
+<section id="login" class="pantalla">
+  <div class="caja" id="cajaLogin">
+    <div class="titulo">[ ACCESO RESTRINGIDO ]</div>
+    <form id="formulario" autocomplete="off">
+      <div>
+        <label for="usuario">USUARIO</label>
+        <input id="usuario" type="text" spellcheck="false" autocomplete="off">
+      </div>
+      <div>
+        <label for="clave">CONTRASEÑA</label>
+        <input id="clave" type="password" autocomplete="off">
+      </div>
+      <div id="error"></div>
+      <button type="submit">ENTRAR</button>
+    </form>
+  </div>
+</section>
+
+<!-- 2. Acceso concedido -->
+<section id="acceso" class="pantalla">
+  <div id="logAcceso" class="terminal" style="width:min(92vw,560px); min-height:120px;"></div>
+  <div id="mensaje" class="cursor"></div>
+  <div style="width:min(80vw,460px)">
+    <div class="barra"><div id="barraAcceso"></div></div>
+    <div id="pctAcceso" class="porcentaje">0%</div>
+  </div>
+</section>
+
+<!-- 3. Galería -->
+<section id="galeria" class="pantalla">
+  <div class="marco"><img id="foto" alt="Recuerdo"></div>
+  <div class="pie" id="pie"></div>
+  <div id="puntos"></div>
+</section>
+
+<!-- 4. Créditos -->
+<section id="creditos" class="pantalla">
+  <div id="collage"></div>
+  <div id="ventanaCreditos"><div id="rollo"></div></div>
+</section>
+
+<!-- 5. Final con botones -->
+<section id="final" class="pantalla">
+  <div class="caja" id="cajaFinal">
+    <div class="titulo">[ FIN ]</div>
+    <div id="frase">Y...esto fue todo...<br>¿Qué vas a hacer?</div>
+    <div class="botones">
+      <button id="btnGracias" type="button">DARME LAS GRACIAS</button>
+      <button id="btnIgnorar" type="button">IGNORARME</button>
+    </div>
+  </div>
+  <div id="gracias">
+    <h1>Gracias</h1>
+    <img id="fotoGracias" alt="Gracias">
+  </div>
+</section>
+
+<div id="aviso"></div>
+
+<script>
+/* ============================================================
+   CONFIGURACIÓN: edita esto a tu gusto
+   - Pon tus fotos en la misma carpeta que este archivo
+     (o en una carpeta "fotos") y escribe su nombre en "src".
+   - Cambia el texto que sale debajo de cada foto.
+   ============================================================ */
+const USUARIO_CLAVE = "rosmery";   // el usuario debe CONTENER esto (sin importar mayúsculas)
+const CONTRASENA    = "miguel";    // contraseña (sin importar mayúsculas)
+const SEGUNDOS_POR_FOTO = 5;
+
+/* Las fotos se buscan solas en la MISMA carpeta de este archivo:
+   foto1, foto2, foto3... (acepta .jpg, .jpeg, .png y .webp).
+   Se detienen en la primera que falte, así que no importa cuántas pongas. */
+const PREFIJO_FOTO = "foto";
+const MAX_FOTOS = 50;
+const EXTENSIONES = ["jpg", "jpeg", "png", "webp", "JPG", "JPEG", "PNG", "WEBP"];
+
+// Texto debajo de cada foto, en orden (foto1, foto2...). Si faltan, queda vacío.
+const TEXTOS = [
+  "Aprovechando, te quería decir algo :)...",
+  "Me sorprendí desde que vi no te espantaba",
+  "Aunque... La verdad me terminó gustando",
+  "Y sí, vos sos la que más ha durado con migo",
+  "Y por eso te quería dar las gracias",
+];
+
+let FOTOS = [];   // se llena sola al iniciar la galería
+
+// Carga una imagen probando cada extensión hasta que una exista
+function cargarImagen(img, base, alFallar) {
+  let k = 0;
+  img.onerror = () => {
+    k++;
+    if (k < EXTENSIONES.length) img.src = base + "." + EXTENSIONES[k];
+    else { img.onerror = null; if (alFallar) alFallar(); }
+  };
+  img.src = base + "." + EXTENSIONES[0];
+}
+
+// Comprueba si existe base + alguna extensión
+function existeImagen(base) {
+  return new Promise((resolve) => {
+    let k = 0;
+    const im = new Image();
+    im.onload = () => resolve(true);
+    im.onerror = () => {
+      k++;
+      if (k < EXTENSIONES.length) im.src = base + "." + EXTENSIONES[k];
+      else resolve(false);
+    };
+    im.src = base + "." + EXTENSIONES[0];
+  });
+}
+
+async function detectarFotos() {
+  const lista = [];
+  for (let n = 1; n <= MAX_FOTOS; n++) {
+    const base = PREFIJO_FOTO + n;
+    if (!(await existeImagen(base))) break;
+    lista.push({ base, texto: TEXTOS[n - 1] || "" });
+  }
+  // Si no encuentra ninguna, deja 5 marcadores para que se note qué falta
+  if (!lista.length) {
+    for (let n = 1; n <= 5; n++) lista.push({ base: PREFIJO_FOTO + n, texto: TEXTOS[n - 1] || "" });
+  }
+  return lista;
+}
+
+/* ----- CRÉDITOS -----
+   Cada elemento es un bloque: rol (texto pequeño) y nombre (texto grande).
+   Para varios nombres en un bloque, sepáralos con "\n". */
+const TITULO_CREDITOS = "NUESTRA HISTORIA";
+const CREDITOS = [
+  { rol: "Protagonista",           nombre: "Rosmery" },
+  { rol: "Con la participación de", nombre: "Miguel" },
+  { rol: "Dirección",              nombre: "192.168.1.32" },
+  { rol: "Guion",                  nombre: "Me lo saqué ahorita :)" },
+  { rol: "Banda sonora",           nombre: "Tus risas" },
+  { rol: "Fotografía",             nombre: "Las mejores que me mandaste XD" },
+  { rol: "Efectos especiales",     nombre: "Las luciérnagas" },
+  { rol: "Agradecimientos",        nombre: "A vos, motivarme a hacer esto" },
+];
+const TEXTO_FIN_CREDITOS = "Y esto apenas comienza...";
+const VELOCIDAD_CREDITOS = 55;     // píxeles por segundo (más alto = más rápido)
+const COLLAGE_CADA_MS    = 1700;   // cada cuánto aparece una foto del collage
+
+/* ----- FINAL ----- */
+const FOTO_GRACIAS = "gracias";   // foto del "Gracias": gracias.jpg / .png ... en la misma carpeta
+const MENSAJE_IGNORAR = "Va Rosme... \n Te voy a hackear...";
+/* ============================================================ */
+
+const $ = (id) => document.getElementById(id);
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function mostrar(id) {
+  document.querySelectorAll(".pantalla").forEach((p) => p.classList.remove("activa"));
+  $(id).classList.add("activa");
+}
+
+/* ---------- Lluvia estilo Matrix ---------- */
+const cm = $("matrix"), xm = cm.getContext("2d");
+let columnas, gotas;
+const LETRAS = "アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789ABCDEF<>/\\{}$#%".split("");
+function ajustarMatrix() {
+  cm.width = innerWidth; cm.height = innerHeight;
+  columnas = Math.floor(cm.width / 18);
+  gotas = Array.from({ length: columnas }, () => Math.random() * -50);
+}
+let matrixActivo = true;
+function dibujarMatrix() {
+  if (matrixActivo) {
+    xm.fillStyle = "rgba(0,0,0,.08)";
+    xm.fillRect(0, 0, cm.width, cm.height);
+    xm.fillStyle = "#00ff66";
+    xm.font = "16px monospace";
+    gotas.forEach((y, i) => {
+      const ch = LETRAS[Math.floor(Math.random() * LETRAS.length)];
+      xm.fillText(ch, i * 18, y * 18);
+      if (y * 18 > cm.height && Math.random() > 0.975) gotas[i] = 0;
+      gotas[i]++;
+    });
+  }
+  requestAnimationFrame(dibujarMatrix);
+}
+ajustarMatrix();
+addEventListener("resize", ajustarMatrix);
+dibujarMatrix();
+
+/* ---------- Utilidades de escritura y carga ---------- */
+async function escribir(el, texto, vel = 35) {
+  for (const c of texto) { el.textContent += c; await dormir(vel); }
+}
+async function cargar(barra, pct, duracion) {
+  const pasos = 100;
+  for (let i = 1; i <= pasos; i++) {
+    // avanza a ritmo irregular para que parezca "real"
+    barra.style.width = i + "%";
+    pct.textContent = i + "%";
+    await dormir(duracion / pasos * (0.5 + Math.random()));
+  }
+}
+
+/* ---------- 0. Arranque ---------- */
+async function arranque() {
+  const t = $("textoArranque");
+  const lineas = [
+    "> iniciando conexión segura...",
+    "> rastreando señal desconocida...",
+    "> descifrando protocolo...",
+  ];
+  const cargaP = cargar($("barraArranque"), $("pctArranque"), 4500);
+  for (const l of lineas) { await escribir(t, l + "\n", 30); await dormir(300); }
+  await cargaP;
+  await dormir(400);
+  mostrar("login");
+  $("usuario").focus();
+}
+
+/* ---------- 1. Login ---------- */
+$("formulario").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const u = $("usuario").value.trim().toLowerCase();
+  const c = $("clave").value.trim().toLowerCase();
+  if (u.includes(USUARIO_CLAVE) && c === CONTRASENA) {
+    $("error").textContent = "";
+    accesoConcedido();
+  } else {
+    $("error").textContent = "ACCESO DENEGADO: credenciales inválidas";
+    const caja = $("cajaLogin");
+    caja.classList.remove("tiembla"); void caja.offsetWidth; caja.classList.add("tiembla");
+    $("clave").value = "";
+  }
+});
+
+/* ---------- 2. Acceso concedido ---------- */
+async function accesoConcedido() {
+  mostrar("acceso");
+  const log = $("logAcceso"), msg = $("mensaje");
+  const cargaP = cargar($("barraAcceso"), $("pctAcceso"), 9000);
+  const lineas = [
+    "> verificando identidad... OK",
+    "> desencriptando archivos personales...",
+    "> cargando recuerdos...",
+  ];
+  for (const l of lineas) { await escribir(log, l + "\n", 28); await dormir(250); }
+  await escribir(msg, "Has accedido a mi base de datos :)", 55);
+  await cargaP;
+  await dormir(700);
+  galeria();
+}
+
+/* ---------- 3. Galería + luciérnagas ---------- */
+const cl = $("luciernagas"), xl = cl.getContext("2d");
+let bichos = [];
+function ajustarLuciernagas() {
+  cl.width = innerWidth; cl.height = innerHeight;
+}
+function crearBichos() {
+  bichos = Array.from({ length: 55 }, () => ({
+    x: Math.random() * cl.width, y: Math.random() * cl.height,
+    vx: (Math.random() - .5) * .5, vy: (Math.random() - .5) * .5,
+    r: 2 + Math.random() * 3, fase: Math.random() * Math.PI * 2,
+    vel: .01 + Math.random() * .03,
+  }));
+}
+function animarLuciernagas() {
+  xl.clearRect(0, 0, cl.width, cl.height);
+  for (const b of bichos) {
+    b.x += b.vx + Math.sin(b.fase * 2) * .3;
+    b.y += b.vy + Math.cos(b.fase * 1.5) * .3;
+    b.fase += b.vel;
+    if (b.x < -10) b.x = cl.width + 10; if (b.x > cl.width + 10) b.x = -10;
+    if (b.y < -10) b.y = cl.height + 10; if (b.y > cl.height + 10) b.y = -10;
+    const brillo = (Math.sin(b.fase) + 1) / 2;          // 0..1 parpadeo
+    const radio = b.r * 6;
+    const g = xl.createRadialGradient(b.x, b.y, 0, b.x, b.y, radio);
+    g.addColorStop(0, `rgba(190,255,120,${.9 * brillo})`);
+    g.addColorStop(.3, `rgba(0,255,102,${.45 * brillo})`);
+    g.addColorStop(1, "rgba(0,255,102,0)");
+    xl.fillStyle = g;
+    xl.beginPath(); xl.arc(b.x, b.y, radio, 0, Math.PI * 2); xl.fill();
+  }
+  requestAnimationFrame(animarLuciernagas);
+}
+
+function placeholder(n, ruta) {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='520'>
+    <rect width='100%' height='100%' fill='#031a0c'/>
+    <text x='50%' y='46%' fill='#00ff66' font-family='monospace' font-size='28' text-anchor='middle'>[ foto ${n} ]</text>
+    <text x='50%' y='56%' fill='#00a344' font-family='monospace' font-size='18' text-anchor='middle'>pon tu imagen en ${ruta || "fotos/foto" + n + ".jpg"}</text></svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+async function galeria() {
+  matrixActivo = false;                       // apagamos la lluvia
+  xm.fillStyle = "#000"; xm.fillRect(0, 0, cm.width, cm.height);
+  cm.style.display = "none";
+  cl.style.display = "block";
+  ajustarLuciernagas(); crearBichos(); animarLuciernagas();
+  addEventListener("resize", () => { ajustarLuciernagas(); crearBichos(); });
+
+  FOTOS = await detectarFotos();
+  mostrar("galeria");
+  const img = $("foto"), pie = $("pie"), puntos = $("puntos");
+  puntos.innerHTML = FOTOS.map(() => "<span></span>").join("");
+
+  async function ponerFoto(n) {
+    img.classList.add("oculto"); pie.classList.add("oculto");
+    await dormir(1000);
+    const f = FOTOS[n];
+    cargarImagen(img, f.base, () => { img.src = placeholder(n + 1, f.base + ".jpg"); });
+    pie.textContent = f.texto;
+    [...puntos.children].forEach((p, k) => p.classList.toggle("on", k === n));
+    await dormir(100);
+    img.classList.remove("oculto"); pie.classList.remove("oculto");
+  }
+
+  img.classList.add("oculto"); pie.classList.add("oculto");
+
+  // Recorre todas las fotos una sola vez
+  for (let i = 0; i < FOTOS.length; i++) {
+    await ponerFoto(i);
+    await dormir(SEGUNDOS_POR_FOTO * 1000);
+  }
+  // Se desvanece la última y pasan los créditos
+  img.classList.add("oculto"); pie.classList.add("oculto");
+  await dormir(1000);
+  await creditos();
+}
+
+/* ---------- 4. Créditos estilo película + collage ---------- */
+function armarCreditos() {
+  const rollo = $("rollo");
+  rollo.innerHTML = "";
+  const t = document.createElement("div");
+  t.className = "gran"; t.textContent = TITULO_CREDITOS;
+  rollo.appendChild(t);
+  for (const c of CREDITOS) {
+    const b = document.createElement("div");
+    b.className = "bloque";
+    const r = document.createElement("div");
+    r.className = "rol"; r.textContent = c.rol;
+    const n = document.createElement("div");
+    n.className = "nombre"; n.style.whiteSpace = "pre-line"; n.textContent = c.nombre;
+    b.append(r, n);
+    rollo.appendChild(b);
+  }
+  const f = document.createElement("div");
+  f.className = "fin"; f.textContent = TEXTO_FIN_CREDITOS;
+  rollo.appendChild(f);
+}
+
+function mezclar(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function lanzarPolaroid(foto, indice, lado) {
+  const p = document.createElement("div");
+  p.className = "polaroid";
+  const im = document.createElement("img");
+  cargarImagen(im, foto.base, () => { im.src = placeholder(indice + 1, foto.base + ".jpg"); });
+  p.appendChild(im);
+
+  // zonas laterales para no tapar el texto central
+  const izq = lado === 0;
+  const x = izq ? 3 + Math.random() * 14 : 66 + Math.random() * 14;   // % del ancho
+  const y = 8 + Math.random() * 62;                                   // % del alto
+  const rot = (Math.random() - .5) * 26;
+  p.style.left = x + "%";
+  p.style.top = y + "%";
+  $("collage").appendChild(p);
+
+  const dur = 5200 + Math.random() * 1800;
+  const anim = p.animate([
+    { opacity: 0, transform: `rotate(${rot - 8}deg) scale(.7)` },
+    { opacity: 1, transform: `rotate(${rot}deg) scale(1)`, offset: .18 },
+    { opacity: 1, transform: `rotate(${rot + 2}deg) scale(1.04)`, offset: .78 },
+    { opacity: 0, transform: `rotate(${rot + 5}deg) scale(1.08)` },
+  ], { duration: dur, easing: "ease-in-out", fill: "forwards" });
+  anim.onfinish = () => p.remove();
+}
+
+async function creditos() {
+  armarCreditos();
+  $("collage").innerHTML = "";
+  mostrar("creditos");
+
+  const rollo = $("rollo");
+  const alto = rollo.offsetHeight;
+  const recorrido = innerHeight + alto;
+  const duracion = (recorrido / VELOCIDAD_CREDITOS) * 1000;
+
+  const anim = rollo.animate(
+    [{ transform: `translateY(${innerHeight}px)` }, { transform: `translateY(${-alto}px)` }],
+    { duration: duracion, easing: "linear", fill: "forwards" }
+  );
+
+  // Collage: fotos apareciendo a los lados mientras suben los créditos
+  let activo = true;
+  (async () => {
+    let cola = [], lado = 0, k = 0;
+    while (activo) {
+      if (!cola.length) cola = mezclar(FOTOS.map((f, i) => ({ f, i })));
+      const { f, i } = cola.pop();
+      lanzarPolaroid(f, i, lado);
+      lado = 1 - lado; k++;
+      await dormir(COLLAGE_CADA_MS);
+    }
+  })();
+
+  await anim.finished;
+  activo = false;
+
+  // Desvanecer todo al final
+  const sec = $("creditos");
+  await sec.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1500, fill: "forwards" }).finished;
+  $("collage").innerHTML = "";
+  final();
+}
+
+/* ---------- 5. Final: dos botones ---------- */
+function final() {
+  $("cajaFinal").style.display = "";
+  $("gracias").classList.remove("visible");
+  $("btnGracias").disabled = false;
+  $("btnIgnorar").disabled = false;
+  mostrar("final");
+}
+
+$("btnGracias").addEventListener("click", () => {
+  const img = $("fotoGracias");
+  cargarImagen(img, FOTO_GRACIAS, () => { img.src = placeholder("", FOTO_GRACIAS + ".jpg"); });
+  $("cajaFinal").style.display = "none";
+  $("gracias").classList.add("visible");
+});
+
+let ignorando = false;
+$("btnIgnorar").addEventListener("click", async () => {
+  if (ignorando) return;
+  ignorando = true;
+  const botones = [$("btnGracias"), $("btnIgnorar")];
+  botones.forEach((b) => (b.disabled = true));
+
+  const aviso = $("aviso");
+  aviso.textContent = MENSAJE_IGNORAR;
+  aviso.classList.add("visible");
+  document.body.classList.add("sacude");
+
+  await dormir(2200);
+
+  document.body.classList.remove("sacude");
+  aviso.classList.remove("visible");
+  botones.forEach((b) => (b.disabled = false));   // vuelve a la misma parte
+  ignorando = false;
+});
+
+arranque();
+</script>
+</body>
+</html>
